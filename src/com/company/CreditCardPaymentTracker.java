@@ -191,9 +191,13 @@ public class CreditCardPaymentTracker {
                 // To also enable transactions in a future session, add:
                 //   Products.TRANSACTIONS
                 .countryCodes(List.of(CountryCode.US))
-                .language("en")
-                // Required for OAuth banks (Chase, BofA)
-                .redirectUri(PlaidLinkServer.REDIRECT_URI);
+                .language("en");
+
+        // Redirect URI is only required for OAuth banks (Chase, BofA) in
+        // development/production. Sandbox does not use OAuth.
+        if (!config.environment.equalsIgnoreCase("sandbox")) {
+            request.redirectUri(PlaidLinkServer.REDIRECT_URI);
+        }
 
         Response<LinkTokenCreateResponse> resp =
                 plaid.linkTokenCreate(request).execute();
