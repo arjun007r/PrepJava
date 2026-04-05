@@ -16,7 +16,7 @@ public class BTreeNode {
         this.data = data;
         neighbors = new ArrayList<BTreeNode>();
     }
-    public void addNode(BTreeNode){
+    public void addNode(BTreeNode node){
 //        neighbors.add()
     }
 
