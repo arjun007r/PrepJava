@@ -72,44 +72,95 @@ public class CreditCardPaymentTracker {
 
     // ── Commands ──────────────────────────────────────────────────────────────
 
-    /** Run Plaid Link for each un-connected target institution. */
+    /** Run Plaid Link for one or more institutions sequentially. */
     private void addAccount() throws Exception {
-        System.out.println("\nWhich institution would you like to connect?");
-        System.out.println("  Known cards: " + String.join(", ", TARGET_INSTITUTIONS));
-        System.out.println("  (Enter any other institution name too)\n");
-
         Scanner scanner = new Scanner(System.in);
-        System.out.print("Institution name: ");
-        String institution = scanner.nextLine().trim();
-        if (institution.isEmpty()) {
-            System.out.println("No institution entered, exiting.");
+
+        // Build list of institutions to connect
+        List<String> toConnect = new ArrayList<>();
+
+        System.out.println("\nWhich institutions would you like to connect?");
+        System.out.println("  0. All (" + String.join(", ", TARGET_INSTITUTIONS) + ")");
+        for (int i = 0; i < TARGET_INSTITUTIONS.size(); i++) {
+            String name = TARGET_INSTITUTIONS.get(i);
+            String status = tokenStore.hasToken(name) ? " (already connected)" : "";
+            System.out.printf("  %d. %s%s%n", i + 1, name, status);
+        }
+        System.out.println("  c. Custom institution name");
+        System.out.print("\nChoice: ");
+        String choice = scanner.nextLine().trim().toLowerCase();
+
+        if (choice.equals("0")) {
+            toConnect.addAll(TARGET_INSTITUTIONS);
+        } else if (choice.equals("c")) {
+            System.out.print("Institution name: ");
+            String name = scanner.nextLine().trim();
+            if (!name.isEmpty()) toConnect.add(name);
+        } else {
+            try {
+                int idx = Integer.parseInt(choice) - 1;
+                if (idx >= 0 && idx < TARGET_INSTITUTIONS.size()) {
+                    toConnect.add(TARGET_INSTITUTIONS.get(idx));
+                } else {
+                    System.out.println("Invalid choice.");
+                    return;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid choice.");
+                return;
+            }
+        }
+
+        if (toConnect.isEmpty()) {
+            System.out.println("Nothing to connect.");
             return;
         }
 
-        System.out.println("\nStarting Plaid Link for: " + institution);
-        String linkToken = createLinkToken();
+        System.out.println("\nWill connect " + toConnect.size() + " account(s): "
+                + String.join(", ", toConnect));
+        System.out.println("A browser window will open for each one.\n");
 
-        PlaidLinkServer linkServer = new PlaidLinkServer();
-        String publicToken = linkServer.openAndAwait(linkToken);
-        String detectedName = linkServer.getInstitutionName();
+        int connected = 0;
+        for (String institution : toConnect) {
+            System.out.println("─".repeat(60));
+            System.out.println("Connecting: " + institution + " (" + (connected + 1)
+                    + " of " + toConnect.size() + ")");
 
-        // Prefer the name Plaid returned (matches the institution's official name)
-        String finalName = (detectedName != null && !detectedName.isBlank())
-                ? detectedName : institution;
+            try {
+                String linkToken = createLinkToken();
+                PlaidLinkServer linkServer = new PlaidLinkServer();
+                String publicToken = linkServer.openAndAwait(linkToken);
+                String detectedName = linkServer.getInstitutionName();
 
-        System.out.println("\nExchanging public token for " + finalName + "...");
-        ItemPublicTokenExchangeRequest req = new ItemPublicTokenExchangeRequest()
-                .publicToken(publicToken);
-        Response<ItemPublicTokenExchangeResponse> resp =
-                plaid.itemPublicTokenExchange(req).execute();
+                String finalName = (detectedName != null && !detectedName.isBlank())
+                        ? detectedName : institution;
 
-        requireSuccess(resp);
-        String accessToken = resp.body().getAccessToken();
-        String itemId      = resp.body().getItemId();
+                System.out.println("Exchanging token for " + finalName + "...");
+                ItemPublicTokenExchangeRequest req = new ItemPublicTokenExchangeRequest()
+                        .publicToken(publicToken);
+                Response<ItemPublicTokenExchangeResponse> resp =
+                        plaid.itemPublicTokenExchange(req).execute();
+                requireSuccess(resp);
 
-        tokenStore.upsert(finalName, accessToken, itemId);
-        System.out.println("  Connected: " + finalName);
-        System.out.println("\nRun without arguments to see your payment schedule.");
+                tokenStore.upsert(finalName, resp.body().getAccessToken(), resp.body().getItemId());
+                System.out.println("  Connected: " + finalName);
+                connected++;
+
+                // Brief pause between connections
+                if (connected < toConnect.size()) {
+                    System.out.println("\nNext up: " + toConnect.get(connected)
+                            + " — press Enter when ready...");
+                    scanner.nextLine();
+                }
+            } catch (Exception e) {
+                System.err.println("  Failed to connect " + institution + ": " + e.getMessage());
+                System.out.print("  Continue with remaining? (y/n): ");
+                if (!scanner.nextLine().trim().equalsIgnoreCase("y")) break;
+            }
+        }
+
+        System.out.println("\n" + connected + " of " + toConnect.size() + " account(s) connected.");
+        System.out.println("Run without arguments to see your payment schedule.");
     }
 
     /** Print the payment schedule for next month across all connected cards. */
