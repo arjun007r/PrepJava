@@ -3,6 +3,7 @@ package com.company;
 import com.plaid.client.ApiClient;
 import com.plaid.client.model.*;
 import com.plaid.client.request.PlaidApi;
+import java.util.HashMap;
 import retrofit2.Response;
 
 import java.time.LocalDate;
@@ -41,14 +42,15 @@ public class CreditCardPaymentTracker {
         this.config     = config;
         this.tokenStore = new PlaidTokenStore();
 
-        ApiClient apiClient = new ApiClient();
+        HashMap<String, String> apiKeys = new HashMap<>();
+        apiKeys.put("clientId", config.clientId);
+        apiKeys.put("secret",   config.secret);
+        ApiClient apiClient = new ApiClient(apiKeys);
         switch (config.environment.toLowerCase()) {
             case "sandbox"     -> apiClient.setPlaidAdapter(ApiClient.Sandbox);
             case "development" -> apiClient.setPlaidAdapter(ApiClient.Development);
             default            -> apiClient.setPlaidAdapter(ApiClient.Production);
         }
-        apiClient.setApiKey("client-id", config.clientId);
-        apiClient.setApiKey("secret",    config.secret);
         this.plaid = apiClient.createService(PlaidApi.class);
     }
 
